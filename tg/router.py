@@ -15,18 +15,14 @@ from tg.handlers import (
     cb_drinks_sub,
     text_input_handler,
     cb_cancel,
+    cb_stale,
     STATE_MAIN,
     STATE_TOBACCO_BRAND,
     STATE_BAR_SUB,
     STATE_DRINKS_SUB,
     STATE_INPUT,
 )
-from tg.keyboards import (
-    CB_ADD_TOBACCO, CB_ADD_BAR, CB_ADD_OTHER,
-    CB_LIST_TOBACCO, CB_LIST_BAR, CB_LIST_OTHER,
-    CB_CLEAR_TOBACCO, CB_CLEAR_BAR, CB_CLEAR_OTHER,
-    CB_CANCEL,
-)
+from tg.keyboards import CB_CANCEL
 
 _TEXT = filters.TEXT & ~filters.COMMAND
 
@@ -64,5 +60,11 @@ def register_handlers(app: Application) -> None:
         ],
         per_user=True,
         per_chat=True,
+        name="order_conversation",
+        persistent=True,
     )
     app.add_handler(conv)
+
+    # Нажатие на кнопку старого сообщения, для которого состояние уже потеряно:
+    # без этого хендлера у пользователя просто бесконечно крутится спиннер.
+    app.add_handler(CallbackQueryHandler(cb_stale))

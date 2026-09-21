@@ -1,7 +1,9 @@
+import html
 import logging
 
 from telegram import Update
-from telegram.ext import ContextTypes, ConversationHandler
+from telegram.error import BadRequest
+from telegram.ext import ContextTypes
 
 from config import settings
 from db.models import Category, OrderItemCreate
@@ -47,14 +49,20 @@ async def _answer(update: Update, text: str, **kwargs) -> None:
     """Ответить на callback и отредактировать сообщение с клавиатурой."""
     q = update.callback_query
     await q.answer()
-    await q.edit_message_text(text, **kwargs)
+    try:
+        await q.edit_message_text(text, **kwargs)
+    except BadRequest as e:
+        # Текст и клавиатура не изменились — Telegram считает это ошибкой,
+        # для пользователя же ничего не произошло.
+        if "message is not modified" not in str(e).lower():
+            raise
 
 
 async def _answer_list(update: Update, text: str) -> None:
     """Показать список — отдельным сообщением чтобы не затирать меню."""
     q = update.callback_query
     await q.answer()
-    await q.message.reply_text(text, parse_mode="Markdown")
+    await q.message.reply_text(text, parse_mode="HTML")
 
 
 # ================================================================
@@ -124,7 +132,7 @@ async def cb_main_menu(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
         await _notify_all(
             ctx,
             sender_id=update.effective_user.id,
-            message=f"🔔 Заказ *{cat.label()}* сделан — список очищен.",
+            message=f"🔔 Заказ <b>{html.escape(cat.label())}</b> сделан — список очищен.",
         )
         return STATE_MAIN
 
@@ -149,8 +157,8 @@ async def cb_tobacco_brand(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> in
             ctx.user_data[CTX_SUBCAT] = brand
             await _answer(
                 update,
-                f"Марка: *{brand}*\n\nНапишите название табака ответным сообщением:",
-                parse_mode="Markdown",
+                f"Марка: <b>{html.escape(brand)}</b>\n\nНапишите название табака ответным сообщением:",
+                parse_mode="HTML",
                 reply_markup=CANCEL_KB,
             )
             return STATE_INPUT
@@ -216,10 +224,19 @@ async def cb_drinks_sub(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
 # ================================================================
 
 async def text_input_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    category = ctx.user_data.get(CTX_CAT)
+    if category is None:
+        # Состояние потеряно (например, перезапуск без сохранённых данных)
+        await update.message.reply_text(
+            "Не понял, к какой категории это относится. Выберите действие:",
+            reply_markup=MAIN_MENU,
+        )
+        return STATE_MAIN
+
     text = update.message.text.strip()
 
     await add_item(OrderItemCreate(
-        category=ctx.user_data[CTX_CAT],
+        category=category,
         subcategory=ctx.user_data.get(CTX_SUBCAT),
         content=text,
         added_by=update.effective_user.id,
@@ -240,6 +257,16 @@ async def cb_cancel(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     return STATE_MAIN
 
 
+# ── Кнопка из устаревшего сообщения ───────────────────────────────
+async def cb_stale(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    """Callback, для которого состояние диалога уже не найдено."""
+    q = update.callback_query
+    await q.answer("Сессия устарела", show_alert=False)
+    await q.message.reply_text(
+        "Эта кнопка устарела. Нажмите /start, чтобы открыть меню заново.",
+    )
+
+
 # ================================================================
 #  ОПОВЕЩЕНИЕ ВСЕХ
 # ================================================================
@@ -253,6 +280,6 @@ async def _notify_all(
         if uid == sender_id:
             continue
         try:
-            await ctx.bot.send_message(chat_id=uid, text=message, parse_mode="Markdown")
+            await ctx.bot.send_message(chat_id=uid, text=message, parse_mode="HTML")
         except Exception as e:
             log.warning("Не удалось отправить оповещение %s: %s", uid, e)
