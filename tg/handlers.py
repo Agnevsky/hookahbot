@@ -42,6 +42,7 @@ log = logging.getLogger(__name__)
 
 CTX_CAT    = "category"
 CTX_SUBCAT = "subcategory"
+CTX_PROMPT = "prompt_msg_id"   # сообщение «напишите ответным…», убираем после ввода
 
 
 # ================================================================
@@ -59,6 +60,40 @@ async def _answer(update: Update, text: str, **kwargs) -> None:
         # для пользователя же ничего не произошло.
         if "message is not modified" not in str(e).lower():
             raise
+
+
+async def _delete_msg(ctx: ContextTypes.DEFAULT_TYPE, chat_id: int, message_id: int | None) -> None:
+    """Удалить сообщение, молча пережив «уже удалено» и «старше 48 часов»."""
+    if not message_id:
+        return
+    try:
+        await ctx.bot.delete_message(chat_id, message_id)
+    except BadRequest:
+        pass
+
+
+async def _prompt(update: Update, ctx: ContextTypes.DEFAULT_TYPE, text: str, **kwargs) -> int:
+    """Попросить написать позицию, запомнив сообщение — потом его уберём."""
+    await _answer(update, text, reply_markup=CANCEL_KB, **kwargs)
+    ctx.user_data[CTX_PROMPT] = update.callback_query.message.message_id
+    return STATE_INPUT
+
+
+async def _finish(update: Update, text: str) -> None:
+    """
+    Завершить действие: убрать служебное сообщение и прислать меню вниз.
+
+    Меню всегда оказывается последним сообщением в чате, листать вверх
+    за ним не надо.
+    """
+    q = update.callback_query
+    await q.answer()
+    chat = q.message.chat
+    try:
+        await q.message.delete()
+    except BadRequest:
+        pass
+    await chat.send_message(text, reply_markup=MAIN_MENU)
 
 
 async def _show_list(update: Update, category: Category) -> None:
@@ -122,8 +157,7 @@ async def cb_main_menu(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     if data == CB_ADD_OTHER:
         ctx.user_data[CTX_CAT]    = Category.OTHER
         ctx.user_data[CTX_SUBCAT] = None
-        await _answer(update, "Что нужно заказать?\n\nНапишите ответным сообщением:", reply_markup=CANCEL_KB)
-        return STATE_INPUT
+        return await _prompt(update, ctx, "Что нужно заказать?\n\nНапишите ответным сообщением:")
 
     # ── Показать список / очистить: сперва спрашиваем категорию ───
     if data == CB_MENU_LIST:
@@ -179,7 +213,7 @@ async def cb_clear_pick(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     if data in _CLEAR_MAP:
         cat = _CLEAR_MAP[data]
         await clear_category(cat)
-        await _answer(update, f"✅ Список «{cat.label()}» очищен.", reply_markup=MAIN_MENU)
+        await _finish(update, f"✅ Список «{cat.label()}» очищен.\n\nВыберите действие:")
         await _notify_all(
             ctx,
             sender_id=update.effective_user.id,
@@ -207,13 +241,11 @@ async def cb_tobacco_brand(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> in
         if brand in settings.TOBACCO_BRANDS:
             ctx.user_data[CTX_CAT]    = Category.TOBACCO
             ctx.user_data[CTX_SUBCAT] = brand
-            await _answer(
-                update,
+            return await _prompt(
+                update, ctx,
                 f"Марка: <b>{html.escape(brand)}</b>\n\nНапишите название табака ответным сообщением:",
                 parse_mode="HTML",
-                reply_markup=CANCEL_KB,
             )
-            return STATE_INPUT
 
     await _answer(update, "Выберите марку из списка:", reply_markup=tobacco_brands_kb())
     return STATE_TOBACCO_BRAND
@@ -238,12 +270,10 @@ async def cb_bar_sub(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     if data in sub_map:
         ctx.user_data[CTX_CAT]    = Category.BAR
         ctx.user_data[CTX_SUBCAT] = sub_map[data]
-        await _answer(
-            update,
+        return await _prompt(
+            update, ctx,
             f"Что нужно заказать ({sub_map[data]})?\n\nНапишите ответным сообщением:",
-            reply_markup=CANCEL_KB,
         )
-        return STATE_INPUT
 
     await _answer(update, "Выберите раздел:", reply_markup=BAR_MENU)
     return STATE_BAR_SUB
@@ -260,12 +290,10 @@ async def cb_drinks_sub(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     if data in drinks_map:
         ctx.user_data[CTX_CAT]    = Category.BAR
         ctx.user_data[CTX_SUBCAT] = drinks_map[data]
-        await _answer(
-            update,
+        return await _prompt(
+            update, ctx,
             f"Что закончилось ({drinks_map[data]})?\n\nНапишите ответным сообщением:",
-            reply_markup=CANCEL_KB,
         )
-        return STATE_INPUT
 
     await _answer(update, "Выберите тип:", reply_markup=DRINKS_MENU)
     return STATE_DRINKS_SUB
@@ -276,6 +304,8 @@ async def cb_drinks_sub(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
 # ================================================================
 
 async def text_input_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    await _delete_msg(ctx, update.effective_chat.id, ctx.user_data.pop(CTX_PROMPT, None))
+
     category = ctx.user_data.get(CTX_CAT)
     if category is None:
         # Состояние потеряно (например, перезапуск без сохранённых данных)
@@ -305,7 +335,8 @@ async def text_input_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> 
 
 # ── Отмена через инлайн кнопку ────────────────────────────────────
 async def cb_cancel(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
-    await _answer(update, "Отменено. Выберите действие:", reply_markup=MAIN_MENU)
+    ctx.user_data.pop(CTX_PROMPT, None)
+    await _finish(update, "Отменено. Выберите действие:")
     return STATE_MAIN
 
 
