@@ -16,14 +16,15 @@ from db.queries import (
 )
 from tg.formatters import format_category_list
 from tg.keyboards import (
-    MAIN_MENU, BAR_MENU, DRINKS_MENU, CANCEL_KB,
+    MAIN_MENU, LIST_MENU, CLEAR_MENU, BAR_MENU, DRINKS_MENU, CANCEL_KB,
     tobacco_brands_kb,
     CB_ADD_TOBACCO, CB_ADD_BAR, CB_ADD_OTHER,
     CB_LIST_TOBACCO, CB_LIST_BAR, CB_LIST_OTHER,
     CB_CLEAR_TOBACCO, CB_CLEAR_BAR, CB_CLEAR_OTHER,
+    CB_MENU_LIST, CB_MENU_CLEAR,
     CB_BAR_DRINKS, CB_BAR_SNACKS, CB_BAR_TEA,
     CB_DRINKS_ALCO, CB_DRINKS_SOFT,
-    CB_BACK_MAIN, CB_BACK_BAR, CB_CANCEL,
+    CB_BACK_MAIN, CB_BACK_BAR,
 )
 
 log = logging.getLogger(__name__)
@@ -35,7 +36,9 @@ log = logging.getLogger(__name__)
     STATE_BAR_SUB,
     STATE_DRINKS_SUB,
     STATE_INPUT,
-) = range(5)
+    STATE_LIST_PICK,
+    STATE_CLEAR_PICK,
+) = range(7)
 
 CTX_CAT    = "category"
 CTX_SUBCAT = "subcategory"
@@ -58,11 +61,26 @@ async def _answer(update: Update, text: str, **kwargs) -> None:
             raise
 
 
-async def _answer_list(update: Update, text: str) -> None:
-    """Показать список — отдельным сообщением чтобы не затирать меню."""
+async def _show_list(update: Update, category: Category) -> None:
+    """
+    Показать список отдельным сообщением, а меню прислать новым под ним.
+
+    Список остаётся в чате нетронутым (по нему идут закупаться), а меню
+    всегда оказывается последним сообщением — не надо листать вверх.
+    """
     q = update.callback_query
     await q.answer()
-    await q.message.reply_text(text, parse_mode="HTML")
+
+    rows = await get_items_by_category(category)
+    chat = q.message.chat
+
+    try:
+        await q.message.delete()
+    except BadRequest:
+        pass  # сообщение старше 48 часов удалить нельзя — не страшно
+
+    await chat.send_message(format_category_list(category, rows), parse_mode="HTML")
+    await chat.send_message("Выберите действие:", reply_markup=MAIN_MENU)
 
 
 # ================================================================
@@ -107,26 +125,59 @@ async def cb_main_menu(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
         await _answer(update, "Что нужно заказать?\n\nНапишите ответным сообщением:", reply_markup=CANCEL_KB)
         return STATE_INPUT
 
-    # ── Показать список ───────────────────────────────────────────
-    list_map = {
-        CB_LIST_TOBACCO: Category.TOBACCO,
-        CB_LIST_BAR:     Category.BAR,
-        CB_LIST_OTHER:   Category.OTHER,
-    }
-    if data in list_map:
-        cat  = list_map[data]
-        rows = await get_items_by_category(cat)
-        await _answer_list(update, format_category_list(cat, rows))
+    # ── Показать список / очистить: сперва спрашиваем категорию ───
+    if data == CB_MENU_LIST:
+        await _answer(update, "Какой список показать?", reply_markup=LIST_MENU)
+        return STATE_LIST_PICK
+
+    if data == CB_MENU_CLEAR:
+        await _answer(update, "Какой список очистить?", reply_markup=CLEAR_MENU)
+        return STATE_CLEAR_PICK
+
+    return STATE_MAIN
+
+
+# ================================================================
+#  ВЫБОР КАТЕГОРИИ ДЛЯ ПРОСМОТРА / ОЧИСТКИ
+# ================================================================
+
+_LIST_MAP = {
+    CB_LIST_TOBACCO: Category.TOBACCO,
+    CB_LIST_BAR:     Category.BAR,
+    CB_LIST_OTHER:   Category.OTHER,
+}
+
+_CLEAR_MAP = {
+    CB_CLEAR_TOBACCO: Category.TOBACCO,
+    CB_CLEAR_BAR:     Category.BAR,
+    CB_CLEAR_OTHER:   Category.OTHER,
+}
+
+
+async def cb_list_pick(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    data = update.callback_query.data
+
+    if data == CB_BACK_MAIN:
+        await _answer(update, "Выберите действие:", reply_markup=MAIN_MENU)
         return STATE_MAIN
 
-    # ── Очистить ──────────────────────────────────────────────────
-    clear_map = {
-        CB_CLEAR_TOBACCO: Category.TOBACCO,
-        CB_CLEAR_BAR:     Category.BAR,
-        CB_CLEAR_OTHER:   Category.OTHER,
-    }
-    if data in clear_map:
-        cat = clear_map[data]
+    if data in _LIST_MAP:
+        await _show_list(update, _LIST_MAP[data])
+        return STATE_MAIN
+
+    await _answer(update, "Какой список показать?", reply_markup=LIST_MENU)
+    return STATE_LIST_PICK
+
+
+async def cb_clear_pick(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    data = update.callback_query.data
+
+    if data == CB_BACK_MAIN:
+        await _answer(update, "Выберите действие:", reply_markup=MAIN_MENU)
+        return STATE_MAIN
+
+    if data in _CLEAR_MAP:
+        cat = _CLEAR_MAP[data]
         await clear_category(cat)
         await _answer(update, f"✅ Список «{cat.label()}» очищен.", reply_markup=MAIN_MENU)
         await _notify_all(
@@ -136,7 +187,8 @@ async def cb_main_menu(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
         )
         return STATE_MAIN
 
-    return STATE_MAIN
+    await _answer(update, "Какой список очистить?", reply_markup=CLEAR_MENU)
+    return STATE_CLEAR_PICK
 
 
 # ================================================================

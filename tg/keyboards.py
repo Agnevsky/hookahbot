@@ -32,6 +32,9 @@ CB_BAR_TEA       = "bar:tea"
 CB_DRINKS_ALCO   = "drinks:alco"
 CB_DRINKS_SOFT   = "drinks:soft"
 
+CB_MENU_LIST     = "menu:list"
+CB_MENU_CLEAR    = "menu:clear"
+
 CB_BACK_MAIN     = "back:main"
 CB_BACK_BAR      = "back:bar"
 CB_CANCEL        = "cancel"
@@ -40,11 +43,23 @@ CB_CANCEL        = "cancel"
 # ================================================================
 #  КЛАВИАТУРЫ
 # ================================================================
-# Три колонки — Табак / Бар / Прочее; три ряда — добавить / показать / очистить
+# Верхний ряд — добавление, ниже два действия с выбором категории на втором шаге
 MAIN_MENU = _kb([
-    [("➕ Табак", CB_ADD_TOBACCO),   ("➕ Бар", CB_ADD_BAR),   ("➕ Прочее", CB_ADD_OTHER)],
-    [("📋 Табак", CB_LIST_TOBACCO),  ("📋 Бар", CB_LIST_BAR),  ("📋 Прочее", CB_LIST_OTHER)],
-    [("🗑 Табак", CB_CLEAR_TOBACCO), ("🗑 Бар", CB_CLEAR_BAR), ("🗑 Прочее", CB_CLEAR_OTHER)],
+    [("🌿 Табак", CB_ADD_TOBACCO), ("🍹 Бар", CB_ADD_BAR), ("📦 Прочее", CB_ADD_OTHER)],
+    [("📋 Список заказа", CB_MENU_LIST)],
+    [("🗑 Очистить список", CB_MENU_CLEAR)],
+])
+
+# Выбор категории для просмотра
+LIST_MENU = _kb([
+    [("🌿 Табак", CB_LIST_TOBACCO), ("🍹 Бар", CB_LIST_BAR), ("📦 Прочее", CB_LIST_OTHER)],
+    [("◀️ Назад", CB_BACK_MAIN)],
+])
+
+# Выбор категории для очистки
+CLEAR_MENU = _kb([
+    [("🌿 Табак", CB_CLEAR_TOBACCO), ("🍹 Бар", CB_CLEAR_BAR), ("📦 Прочее", CB_CLEAR_OTHER)],
+    [("◀️ Назад", CB_BACK_MAIN)],
 ])
 
 BAR_MENU = _kb([
