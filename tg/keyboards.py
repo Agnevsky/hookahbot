@@ -1,6 +1,7 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from config import settings
+from db.models import Category
 
 
 def _kb(buttons: list[list[tuple[str, str]]]) -> InlineKeyboardMarkup:
@@ -43,24 +44,48 @@ CB_CANCEL        = "cancel"
 # ================================================================
 #  КЛАВИАТУРЫ
 # ================================================================
-# Верхний ряд — добавление, ниже два действия с выбором категории на втором шаге
-MAIN_MENU = _kb([
-    [("🌿 Табак", CB_ADD_TOBACCO), ("🍹 Бар", CB_ADD_BAR), ("📦 Прочее", CB_ADD_OTHER)],
-    [("📋 Список заказа", CB_MENU_LIST)],
-    [("🗑 Очистить список", CB_MENU_CLEAR)],
-])
+def _badge(n: int) -> str:
+    """Счётчик на кнопке; у пустого списка не показываем, чтобы не шуметь."""
+    return f" · {n}" if n else ""
 
-# Выбор категории для просмотра
-LIST_MENU = _kb([
-    [("🌿 Табак", CB_LIST_TOBACCO), ("🍹 Бар", CB_LIST_BAR), ("📦 Прочее", CB_LIST_OTHER)],
-    [("◀️ Назад", CB_BACK_MAIN)],
-])
 
-# Выбор категории для очистки
-CLEAR_MENU = _kb([
-    [("🌿 Табак", CB_CLEAR_TOBACCO), ("🍹 Бар", CB_CLEAR_BAR), ("📦 Прочее", CB_CLEAR_OTHER)],
-    [("◀️ Назад", CB_BACK_MAIN)],
-])
+def main_menu(counts: dict[Category, int]) -> InlineKeyboardMarkup:
+    """Верхний ряд — добавление, ниже два действия с выбором категории на втором шаге."""
+    total = sum(counts.values())
+    return _kb([
+        [("🌿 Табак", CB_ADD_TOBACCO), ("🍹 Бар", CB_ADD_BAR), ("📦 Прочее", CB_ADD_OTHER)],
+        [(f"📋 Список заказа{_badge(total)}", CB_MENU_LIST)],
+        [("🗑 Очистить список", CB_MENU_CLEAR)],
+    ])
+
+
+def _pick_menu(counts: dict[Category, int], cb: dict[Category, str]) -> InlineKeyboardMarkup:
+    return _kb([
+        [
+            (f"🌿 Табак{_badge(counts[Category.TOBACCO])}", cb[Category.TOBACCO]),
+            (f"🍹 Бар{_badge(counts[Category.BAR])}",       cb[Category.BAR]),
+            (f"📦 Прочее{_badge(counts[Category.OTHER])}",  cb[Category.OTHER]),
+        ],
+        [("◀️ Назад", CB_BACK_MAIN)],
+    ])
+
+
+def list_menu(counts: dict[Category, int]) -> InlineKeyboardMarkup:
+    """Выбор категории для просмотра."""
+    return _pick_menu(counts, {
+        Category.TOBACCO: CB_LIST_TOBACCO,
+        Category.BAR:     CB_LIST_BAR,
+        Category.OTHER:   CB_LIST_OTHER,
+    })
+
+
+def clear_menu(counts: dict[Category, int]) -> InlineKeyboardMarkup:
+    """Выбор категории для очистки."""
+    return _pick_menu(counts, {
+        Category.TOBACCO: CB_CLEAR_TOBACCO,
+        Category.BAR:     CB_CLEAR_BAR,
+        Category.OTHER:   CB_CLEAR_OTHER,
+    })
 
 BAR_MENU = _kb([
     [("🥤 Напитки", CB_BAR_DRINKS), ("🍿 Снеки", CB_BAR_SNACKS), ("🫖 Чай", CB_BAR_TEA)],

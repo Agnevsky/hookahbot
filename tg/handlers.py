@@ -1,7 +1,7 @@
 import html
 import logging
 
-from telegram import Update
+from telegram import InlineKeyboardMarkup, Update
 from telegram.error import BadRequest
 from telegram.ext import ContextTypes
 
@@ -9,6 +9,7 @@ from config import settings
 from db.models import Category, OrderItemCreate
 from db.queries import (
     add_item,
+    get_counts,
     get_items_by_category,
     clear_category,
     get_all_user_ids,
@@ -16,7 +17,7 @@ from db.queries import (
 )
 from tg.formatters import format_category_list
 from tg.keyboards import (
-    MAIN_MENU, LIST_MENU, CLEAR_MENU, BAR_MENU, DRINKS_MENU, CANCEL_KB,
+    main_menu, list_menu, clear_menu, BAR_MENU, DRINKS_MENU, CANCEL_KB,
     tobacco_brands_kb,
     CB_ADD_TOBACCO, CB_ADD_BAR, CB_ADD_OTHER,
     CB_LIST_TOBACCO, CB_LIST_BAR, CB_LIST_OTHER,
@@ -48,6 +49,18 @@ CTX_PROMPT = "prompt_msg_id"   # сообщение «напишите отве�
 # ================================================================
 #  УТИЛИТЫ
 # ================================================================
+
+async def _main_kb() -> InlineKeyboardMarkup:
+    return main_menu(await get_counts())
+
+
+async def _list_kb() -> InlineKeyboardMarkup:
+    return list_menu(await get_counts())
+
+
+async def _clear_kb() -> InlineKeyboardMarkup:
+    return clear_menu(await get_counts())
+
 
 async def _answer(update: Update, text: str, **kwargs) -> None:
     """Ответить на callback и отредактировать сообщение с клавиатурой."""
@@ -93,7 +106,7 @@ async def _finish(update: Update, text: str) -> None:
         await q.message.delete()
     except BadRequest:
         pass
-    await chat.send_message(text, reply_markup=MAIN_MENU)
+    await chat.send_message(text, reply_markup=await _main_kb())
 
 
 async def _show_list(update: Update, category: Category) -> None:
@@ -115,7 +128,7 @@ async def _show_list(update: Update, category: Category) -> None:
         pass  # сообщение старше 48 часов удалить нельзя — не страшно
 
     await chat.send_message(format_category_list(category, rows), parse_mode="HTML")
-    await chat.send_message("Выберите действие:", reply_markup=MAIN_MENU)
+    await chat.send_message("Выберите действие:", reply_markup=await _main_kb())
 
 
 # ================================================================
@@ -134,7 +147,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
         "Теперь будешь получать оповещения об очистке списков."
         if is_new else "Выберите действие:"
     )
-    await update.message.reply_text(greeting, reply_markup=MAIN_MENU)
+    await update.message.reply_text(greeting, reply_markup=await _main_kb())
     return STATE_MAIN
 
 
@@ -161,11 +174,11 @@ async def cb_main_menu(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
 
     # ── Показать список / очистить: сперва спрашиваем категорию ───
     if data == CB_MENU_LIST:
-        await _answer(update, "Какой список показать?", reply_markup=LIST_MENU)
+        await _answer(update, "Какой список показать?", reply_markup=await _list_kb())
         return STATE_LIST_PICK
 
     if data == CB_MENU_CLEAR:
-        await _answer(update, "Какой список очистить?", reply_markup=CLEAR_MENU)
+        await _answer(update, "Какой список очистить?", reply_markup=await _clear_kb())
         return STATE_CLEAR_PICK
 
     return STATE_MAIN
@@ -192,14 +205,14 @@ async def cb_list_pick(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     data = update.callback_query.data
 
     if data == CB_BACK_MAIN:
-        await _answer(update, "Выберите действие:", reply_markup=MAIN_MENU)
+        await _answer(update, "Выберите действие:", reply_markup=await _main_kb())
         return STATE_MAIN
 
     if data in _LIST_MAP:
         await _show_list(update, _LIST_MAP[data])
         return STATE_MAIN
 
-    await _answer(update, "Какой список показать?", reply_markup=LIST_MENU)
+    await _answer(update, "Какой список показать?", reply_markup=await _list_kb())
     return STATE_LIST_PICK
 
 
@@ -207,7 +220,7 @@ async def cb_clear_pick(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     data = update.callback_query.data
 
     if data == CB_BACK_MAIN:
-        await _answer(update, "Выберите действие:", reply_markup=MAIN_MENU)
+        await _answer(update, "Выберите действие:", reply_markup=await _main_kb())
         return STATE_MAIN
 
     if data in _CLEAR_MAP:
@@ -221,7 +234,7 @@ async def cb_clear_pick(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
         )
         return STATE_MAIN
 
-    await _answer(update, "Какой список очистить?", reply_markup=CLEAR_MENU)
+    await _answer(update, "Какой список очистить?", reply_markup=await _clear_kb())
     return STATE_CLEAR_PICK
 
 
@@ -233,7 +246,7 @@ async def cb_tobacco_brand(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> in
     data = update.callback_query.data
 
     if data == CB_BACK_MAIN:
-        await _answer(update, "Выберите действие:", reply_markup=MAIN_MENU)
+        await _answer(update, "Выберите действие:", reply_markup=await _main_kb())
         return STATE_MAIN
 
     if data.startswith("brand:"):
@@ -259,7 +272,7 @@ async def cb_bar_sub(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     data = update.callback_query.data
 
     if data == CB_BACK_MAIN:
-        await _answer(update, "Выберите действие:", reply_markup=MAIN_MENU)
+        await _answer(update, "Выберите действие:", reply_markup=await _main_kb())
         return STATE_MAIN
 
     if data == CB_BAR_DRINKS:
@@ -311,7 +324,7 @@ async def text_input_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> 
         # Состояние потеряно (например, перезапуск без сохранённых данных)
         await update.message.reply_text(
             "Не понял, к какой категории это относится. Выберите действие:",
-            reply_markup=MAIN_MENU,
+            reply_markup=await _main_kb(),
         )
         return STATE_MAIN
 
@@ -328,7 +341,7 @@ async def text_input_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> 
     label  = f" [{subcat}]" if subcat else ""
     await update.message.reply_text(
         f"✅ Добавлено{label}! Что-то ещё?",
-        reply_markup=MAIN_MENU,
+        reply_markup=await _main_kb(),
     )
     return STATE_MAIN
 

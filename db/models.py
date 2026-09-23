@@ -19,6 +19,16 @@ class Category(StrEnum):
         }[self]
 
 
+def split_positions(content: str) -> list[str]:
+    """
+    Разбить запись на отдельные позиции.
+
+    Одна запись может быть многострочной (вставили список) — каждая
+    непустая строка считается и показывается отдельной позицией.
+    """
+    return [line.strip() for line in content.splitlines() if line.strip()]
+
+
 class Base(DeclarativeBase):
     pass
 

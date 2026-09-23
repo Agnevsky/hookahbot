@@ -1,7 +1,14 @@
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.models import Category, OrderItem, OrderItemCreate, OrderItemRead, RegisteredUser
+from db.models import (
+    Category,
+    OrderItem,
+    OrderItemCreate,
+    OrderItemRead,
+    RegisteredUser,
+    split_positions,
+)
 from db.session import AsyncSessionFactory
 
 
@@ -63,6 +70,19 @@ async def get_items_by_category(category: Category) -> list[OrderItemRead]:
             .order_by(OrderItem.subcategory, OrderItem.added_at)
         )
         return [OrderItemRead.model_validate(r) for r in rows]
+
+
+async def get_counts() -> dict[Category, int]:
+    """Сколько позиций ждёт заказа в каждой категории."""
+    async with _session() as session:
+        rows = await session.execute(
+            select(OrderItem.category, OrderItem.content)
+            .where(OrderItem.is_done.is_(False))
+        )
+        counts = {c: 0 for c in Category}
+        for category, content in rows:
+            counts[Category(category)] += len(split_positions(content))
+        return counts
 
 
 async def get_all_items() -> dict[Category, list[OrderItemRead]]:

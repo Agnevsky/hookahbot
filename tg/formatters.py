@@ -1,7 +1,18 @@
 import html
 from collections import defaultdict
 
-from db.models import Category, OrderItemRead
+from db.models import Category, OrderItemRead, split_positions
+
+
+def plural_positions(n: int) -> str:
+    """1 позиция, 2 позиции, 5 позиций, 11 позиций, 21 позиция."""
+    if n % 10 == 1 and n % 100 != 11:
+        word = "позиция"
+    elif n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14):
+        word = "позиции"
+    else:
+        word = "позиций"
+    return f"{n} {word}"
 
 
 def format_category_list(category: Category, rows: list[OrderItemRead]) -> str:
@@ -30,25 +41,24 @@ def format_category_list(category: Category, rows: list[OrderItemRead]) -> str:
         Снеки:
           • Чипсы Принглс
     """
-    header = html.escape(category.label())
-    if not rows:
-        return f"{header}\n\n<i>— список пуст —</i>"
-
     # Группируем по подкатегории (None — позиции без неё, например «Прочее»)
     groups: dict[str | None, list[str]] = defaultdict(list)
     for item in rows:
-        groups[item.subcategory].append(item.content)
+        positions = split_positions(item.content)
+        if positions:  # не заводим пустую группу — иначе заголовок без пунктов
+            groups[item.subcategory].extend(positions)
 
-    lines = [header, ""]
-    for subcat, contents in groups.items():
+    total = sum(len(positions) for positions in groups.values())
+    header = html.escape(category.label())
+    if not total:
+        return f"{header}\n\n<i>— список пуст —</i>"
+
+    lines = [f"{header} · {plural_positions(total)}", ""]
+    for subcat, positions in groups.items():
         if subcat:
-            lines.append(f"<b>{html.escape(subcat)}:</b>")
-        for content in contents:
-            # Каждая запись может быть многострочной — разбиваем
-            for line in content.splitlines():
-                line = line.strip()
-                if line:
-                    lines.append(f"  • {html.escape(line)}")
+            lines.append(f"<b>{html.escape(subcat)}</b> · {len(positions)}")
+        for position in positions:
+            lines.append(f"  • {html.escape(position)}")
         lines.append("")
 
     return "\n".join(lines).rstrip()
