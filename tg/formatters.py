@@ -1,7 +1,17 @@
 import html
 from collections import defaultdict
 
+from db.fill import FillAlert
 from db.models import Category, OrderItemRead, split_positions
+
+
+def format_fill_alert(alert: FillAlert) -> str:
+    """Оповещение о заполненности (HTML)."""
+    title = html.escape(alert.pool.title)
+    stats = f"{alert.count} из {alert.pool.capacity}"
+    if alert.threshold >= 100:
+        return f"🔴 <b>{title}</b>: список заполнен ({stats}) — пора делать заказ!"
+    return f"🟡 <b>{title}</b>: заполнено на {alert.percent}% ({stats}) — скоро пора заказывать."
 
 
 def plural_positions(n: int) -> str:

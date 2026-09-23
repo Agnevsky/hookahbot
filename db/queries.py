@@ -1,7 +1,10 @@
+from collections import defaultdict
+
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import (
+    Breakdown,
     Category,
     OrderItem,
     OrderItemCreate,
@@ -72,17 +75,30 @@ async def get_items_by_category(category: Category) -> list[OrderItemRead]:
         return [OrderItemRead.model_validate(r) for r in rows]
 
 
-async def get_counts() -> dict[Category, int]:
-    """Сколько позиций ждёт заказа в каждой категории."""
+async def get_breakdown() -> Breakdown:
+    """Сколько позиций ждёт заказа — по (категория, подкатегория)."""
     async with _session() as session:
         rows = await session.execute(
-            select(OrderItem.category, OrderItem.content)
+            select(OrderItem.category, OrderItem.subcategory, OrderItem.content)
             .where(OrderItem.is_done.is_(False))
         )
-        counts = {c: 0 for c in Category}
-        for category, content in rows:
-            counts[Category(category)] += len(split_positions(content))
-        return counts
+        breakdown: Breakdown = defaultdict(int)
+        for category, subcategory, content in rows:
+            if n := len(split_positions(content)):
+                breakdown[(Category(category), subcategory)] += n
+        return dict(breakdown)
+
+
+def counts_by_category(breakdown: Breakdown) -> dict[Category, int]:
+    counts = {c: 0 for c in Category}
+    for (category, _), n in breakdown.items():
+        counts[category] += n
+    return counts
+
+
+async def get_counts() -> dict[Category, int]:
+    """Сколько позиций ждёт заказа в каждой категории."""
+    return counts_by_category(await get_breakdown())
 
 
 async def get_all_items() -> dict[Category, list[OrderItemRead]]:

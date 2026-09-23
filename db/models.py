@@ -19,6 +19,18 @@ class Category(StrEnum):
         }[self]
 
 
+class BarSub(StrEnum):
+    """Подразделы бара. Значения хранятся в order_items.subcategory — не менять."""
+    ALCO   = "Алко"
+    SOFT   = "Б/алко"
+    SNACKS = "Снеки"
+    TEA    = "Чай"
+
+
+# Число позиций по (категория, подкатегория)
+Breakdown = dict[tuple[Category, str | None], int]
+
+
 def split_positions(content: str) -> list[str]:
     """
     Разбить запись на отдельные позиции.

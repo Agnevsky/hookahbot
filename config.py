@@ -1,3 +1,4 @@
+from pydantic import PositiveInt
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -13,6 +14,14 @@ class Settings(BaseSettings):
 
     # Файл с состоянием диалогов — переживает перезапуск контейнера
     PERSISTENCE_PATH: str = "data/bot_state.pickle"
+
+    # Заполненность: сколько позиций считается «100 %»
+    CAPACITY_TOBACCO:    PositiveInt = 50
+    CAPACITY_BAR_DRINKS: PositiveInt = 15   # алко + б/алко вместе
+    CAPACITY_OTHER:      PositiveInt = 15
+
+    # На каких процентах рассылать оповещение (каждый порог — один раз до очистки)
+    FILL_THRESHOLDS: list[PositiveInt] = [80, 100]
 
     TOBACCO_BRANDS: list[str] = [
         "Dark Side",

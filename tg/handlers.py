@@ -6,16 +6,19 @@ from telegram.error import BadRequest
 from telegram.ext import ContextTypes
 
 from config import settings
-from db.models import Category, OrderItemCreate
+from db.fill import crossed_thresholds
+from db.models import BarSub, Category, OrderItemCreate
 from db.queries import (
     add_item,
+    counts_by_category,
+    get_breakdown,
     get_counts,
     get_items_by_category,
     clear_category,
     get_all_user_ids,
     register_user,
 )
-from tg.formatters import format_category_list
+from tg.formatters import format_category_list, format_fill_alert
 from tg.keyboards import (
     main_menu, list_menu, clear_menu, BAR_MENU, DRINKS_MENU, CANCEL_KB,
     tobacco_brands_kb,
@@ -279,7 +282,7 @@ async def cb_bar_sub(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
         await _answer(update, "Выберите тип напитков:", reply_markup=DRINKS_MENU)
         return STATE_DRINKS_SUB
 
-    sub_map = {CB_BAR_SNACKS: "Снеки", CB_BAR_TEA: "Чай"}
+    sub_map = {CB_BAR_SNACKS: BarSub.SNACKS.value, CB_BAR_TEA: BarSub.TEA.value}
     if data in sub_map:
         ctx.user_data[CTX_CAT]    = Category.BAR
         ctx.user_data[CTX_SUBCAT] = sub_map[data]
@@ -299,7 +302,7 @@ async def cb_drinks_sub(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
         await _answer(update, "Выберите раздел:", reply_markup=BAR_MENU)
         return STATE_BAR_SUB
 
-    drinks_map = {CB_DRINKS_ALCO: "Алко", CB_DRINKS_SOFT: "Б/алко"}
+    drinks_map = {CB_DRINKS_ALCO: BarSub.ALCO.value, CB_DRINKS_SOFT: BarSub.SOFT.value}
     if data in drinks_map:
         ctx.user_data[CTX_CAT]    = Category.BAR
         ctx.user_data[CTX_SUBCAT] = drinks_map[data]
@@ -328,21 +331,29 @@ async def text_input_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> 
         )
         return STATE_MAIN
 
-    text = update.message.text.strip()
+    text   = update.message.text.strip()
+    subcat = ctx.user_data.get(CTX_SUBCAT)
 
+    before = await get_breakdown()
     await add_item(OrderItemCreate(
         category=category,
-        subcategory=ctx.user_data.get(CTX_SUBCAT),
+        subcategory=subcat,
         content=text,
         added_by=update.effective_user.id,
     ))
+    after = await get_breakdown()
 
-    subcat = ctx.user_data.get(CTX_SUBCAT)
-    label  = f" [{subcat}]" if subcat else ""
+    alerts = [format_fill_alert(a) for a in crossed_thresholds(before, after)]
+
+    # Добавившему — предупреждение прямо в подтверждении, остальным — рассылкой
+    label = f" [{html.escape(subcat)}]" if subcat else ""
     await update.message.reply_text(
-        f"✅ Добавлено{label}! Что-то ещё?",
-        reply_markup=await _main_kb(),
+        "\n\n".join([f"✅ Добавлено{label}! Что-то ещё?", *alerts]),
+        parse_mode="HTML",
+        reply_markup=main_menu(counts_by_category(after)),
     )
+    for alert in alerts:
+        await _notify_all(ctx, sender_id=update.effective_user.id, message=alert)
     return STATE_MAIN
 
 
