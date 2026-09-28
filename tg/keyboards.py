@@ -36,7 +36,7 @@ CB_DRINKS_SOFT   = "drinks:soft"
 CB_MENU_LIST     = "menu:list"
 CB_MENU_CLEAR    = "menu:clear"
 
-CB_ADMIN_NOTIFY  = "admin:notify"
+CB_SEND_PREFIX   = "send:"   # + telegram_id ответственного
 
 CB_BACK_MAIN     = "back:main"
 CB_BACK_BAR      = "back:bar"
@@ -54,7 +54,7 @@ def _badge(n: int) -> str:
 def main_menu(counts: dict[Category, int], is_admin: bool = False) -> InlineKeyboardMarkup:
     """
     Верхний ряд — добавление, ниже два действия с выбором категории на втором шаге.
-    Администратору — ещё кнопка ручной рассылки оповещений.
+    Администратору — по кнопке «📤 Отправить …» на каждого ответственного.
     """
     total = sum(counts.values())
     rows = [
@@ -63,7 +63,10 @@ def main_menu(counts: dict[Category, int], is_admin: bool = False) -> InlineKeyb
         [("🗑 Очистить список", CB_MENU_CLEAR)],
     ]
     if is_admin:
-        rows.append([("📣 Разослать оповещения", CB_ADMIN_NOTIFY)])
+        rows.append([
+            (f"📤 Отправить {r.name}", f"{CB_SEND_PREFIX}{r.telegram_id}")
+            for r in settings.RESPONSIBLE
+        ])
     return _kb(rows)
 
 

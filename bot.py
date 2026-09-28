@@ -18,7 +18,13 @@ log = logging.getLogger(__name__)
 async def on_startup(app: Application) -> None:
     await init_db()
     log.info("БД инициализирована")
-    log.info("Оповещения по табаку: %s", settings.TOBACCO_ALERT_IDS or "всем зарегистрированным")
+    log.info("Пороги оповещений: %s%%", settings.FILL_THRESHOLDS)
+    log.info(
+        "Ёмкость: табак %d, напитки %d, прочее %d",
+        settings.CAPACITY_TOBACCO, settings.CAPACITY_BAR_DRINKS, settings.CAPACITY_OTHER,
+    )
+    for r in settings.RESPONSIBLE:
+        log.info("Ответственный: %s (%s) — %s", r.name, r.telegram_id, ", ".join(r.categories))
     log.info("Администраторы: %s", settings.ADMIN_IDS or "нет")
 
 

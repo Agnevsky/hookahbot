@@ -17,7 +17,6 @@ class Pool:
     category:      Category
     capacity:      int
     subcategories: frozenset[str] | None = None    # None — вся категория
-    recipients:    tuple[int, ...] | None = None   # None — все зарегистрированные
 
     def count(self, breakdown: Breakdown) -> int:
         return sum(
@@ -29,8 +28,7 @@ class Pool:
 
 # Снеки и чай в заполненности не участвуют
 POOLS: tuple[Pool, ...] = (
-    Pool("tobacco", "🌿 Табак", Category.TOBACCO, settings.CAPACITY_TOBACCO,
-         recipients=tuple(settings.TOBACCO_ALERT_IDS) or None),
+    Pool("tobacco", "🌿 Табак", Category.TOBACCO, settings.CAPACITY_TOBACCO),
     Pool("drinks", "🍹 Напитки", Category.BAR, settings.CAPACITY_BAR_DRINKS,
          subcategories=frozenset({BarSub.ALCO, BarSub.SOFT})),
     Pool("other", "📦 Прочее", Category.OTHER, settings.CAPACITY_OTHER),
@@ -41,7 +39,7 @@ POOLS: tuple[Pool, ...] = (
 class FillAlert:
     pool:  Pool
     count: int
-    level: int   # достигнутый порог, %
+    level: int   # достигнутый порог, % (0 — ни одного)
 
     @property
     def percent(self) -> int:
@@ -82,14 +80,14 @@ def new_alerts(breakdown: Breakdown, announced: Announced) -> list[FillAlert]:
     return alerts
 
 
-def current_alerts(breakdown: Breakdown) -> list[FillAlert]:
-    """Состояние всех пулов, дошедших хотя бы до младшего порога."""
-    alerts = []
-    for pool in POOLS:
-        count = pool.count(breakdown)
-        if level := fill_level(pool, count):
-            alerts.append(FillAlert(pool, count, level))
-    return alerts
+def status(category: Category, breakdown: Breakdown) -> list[FillAlert]:
+    """Текущая заполненность пулов категории — вне зависимости от порогов."""
+    return [
+        FillAlert(pool, count, fill_level(pool, count))
+        for pool in POOLS
+        if pool.category == category
+        for count in [pool.count(breakdown)]
+    ]
 
 
 def reset_announced(announced: Announced, category: Category) -> None:

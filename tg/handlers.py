@@ -5,8 +5,8 @@ from telegram import InlineKeyboardMarkup, Update
 from telegram.error import BadRequest, TelegramError
 from telegram.ext import ContextTypes
 
-from config import settings
-from db.fill import Announced, FillAlert, current_alerts, new_alerts, reset_announced
+from config import Responsible, settings
+from db.fill import Announced, FillAlert, new_alerts, reset_announced, status
 from db.models import BarSub, Category, OrderItemCreate
 from db.queries import (
     add_item,
@@ -25,7 +25,7 @@ from tg.keyboards import (
     CB_ADD_TOBACCO, CB_ADD_BAR, CB_ADD_OTHER,
     CB_LIST_TOBACCO, CB_LIST_BAR, CB_LIST_OTHER,
     CB_CLEAR_TOBACCO, CB_CLEAR_BAR, CB_CLEAR_OTHER,
-    CB_MENU_LIST, CB_MENU_CLEAR, CB_ADMIN_NOTIFY,
+    CB_MENU_LIST, CB_MENU_CLEAR, CB_SEND_PREFIX,
     CB_BAR_DRINKS, CB_BAR_SNACKS, CB_BAR_TEA,
     CB_DRINKS_ALCO, CB_DRINKS_SOFT,
     CB_BACK_MAIN, CB_BACK_BAR,
@@ -194,14 +194,15 @@ async def cb_main_menu(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
         await _answer(update, "Какой список очистить?", reply_markup=await _clear_kb())
         return STATE_CLEAR_PICK
 
-    # ── Ручная рассылка (только администратор) ────────────────────
-    if data == CB_ADMIN_NOTIFY:
-        # Кнопку видит только админ, но callback_data можно подделать —
+    # ── «Отправить …» (только администратор) ──────────────────────
+    if data.startswith(CB_SEND_PREFIX):
+        person = _responsible_by_id(data.removeprefix(CB_SEND_PREFIX))
+        # Кнопки видит только админ, но callback_data можно подделать —
         # проверяем ещё раз здесь
-        if not _is_admin(update):
+        if not _is_admin(update) or person is None:
             await update.callback_query.answer("Недоступно", show_alert=True)
             return STATE_MAIN
-        report = await _broadcast_current(ctx, sender_id=update.effective_user.id)
+        report = await _send_to_responsible(ctx, person)
         await _finish(update, report, parse_mode="HTML")
         return STATE_MAIN
 
@@ -432,10 +433,11 @@ async def _send_fill_alert(
     sender_id: int,
 ) -> tuple[int, int, list[str]]:
     """
-    Разослать оповещение о заполненности адресатам его пула.
+    Разослать оповещение о заполненности ответственным за категорию пула
+    (если их нет — всем зарегистрированным).
     Возвращает (доставлено, всего адресатов, [недоставленные]).
     """
-    recipients = alert.pool.recipients or await get_all_user_ids()
+    recipients = _responsible_ids(alert.pool.category) or await get_all_user_ids()
     targets = [uid for uid in recipients if uid != sender_id]
     sent, failed = await _deliver(ctx, format_fill_alert(alert), targets)
     log.info(
@@ -445,29 +447,69 @@ async def _send_fill_alert(
     return sent, len(targets), failed
 
 
-async def _broadcast_current(ctx: ContextTypes.DEFAULT_TYPE, sender_id: int) -> str:
-    """Ручная рассылка текущей заполненности. Возвращает отчёт для администратора."""
-    alerts = current_alerts(await get_breakdown())
-    if not alerts:
-        lowest = min(settings.FILL_THRESHOLDS)
-        return f"Все списки заполнены меньше чем на {lowest}% — рассылать нечего.\n\nВыберите действие:"
+def _responsible_ids(category: Category) -> list[int]:
+    return [r.telegram_id for r in settings.RESPONSIBLE if category in r.categories]
 
+
+def _responsible_by_id(raw: str) -> Responsible | None:
+    return next((r for r in settings.RESPONSIBLE if str(r.telegram_id) == raw), None)
+
+
+_TG_LIMIT = 4000   # у Telegram 4096, оставляем запас на эмодзи
+
+
+def _chunks(text: str) -> list[str]:
+    """Разбить длинное сообщение по строкам — теги в каждой строке закрыты."""
+    chunks, current = [], ""
+    for line in text.split("\n"):
+        candidate = f"{current}\n{line}" if current else line
+        if len(candidate) > _TG_LIMIT and current:
+            chunks.append(current)
+            current = line
+        else:
+            current = candidate
+    chunks.append(current)
+    return chunks
+
+
+async def _send_to_responsible(ctx: ContextTypes.DEFAULT_TYPE, person: Responsible) -> str:
+    """
+    Отправить ответственному его списки с заполненностью — всегда,
+    независимо от порогов. Возвращает отчёт для администратора.
+    """
+    breakdown  = await get_breakdown()
+    categories = [c for c in Category if c in person.categories]
+
+    sent_alerts: list[FillAlert] = []
+    messages: list[str] = []
+    for category in categories:
+        pools = status(category, breakdown)
+        sent_alerts += pools
+        rows = await get_items_by_category(category)
+        messages.append(
+            "\n".join(map(format_fill_alert, pools))
+            + "\n\n"
+            + format_category_list(category, rows)
+        )
+
+    name = html.escape(person.name)
+    try:
+        for text in messages:
+            for chunk in _chunks(text):
+                await ctx.bot.send_message(person.telegram_id, chunk, parse_mode="HTML")
+    except TelegramError as e:
+        log.warning("Не удалось отправить %s (%s): %s", person.name, person.telegram_id, e)
+        return f"⚠️ Не доставлено {name}: {html.escape(_why(e))}.\n\nВыберите действие:"
+
+    # Отправленный вручную уровень автоматика повторять не будет
     announced = _announced(ctx)
-    lines = ["📣 <b>Оповещения разосланы</b>", ""]
-    for alert in alerts:
-        sent, total, failed = await _send_fill_alert(ctx, alert, sender_id)
-        # Уже объявлено вручную — автоматика не повторит тот же уровень
+    for alert in sent_alerts:
         announced[alert.pool.key] = max(announced.get(alert.pool.key, 0), alert.level)
 
-        title = html.escape(alert.pool.title)
-        if total:
-            lines.append(f"{title} · {alert.percent}% — доставлено {sent} из {total}")
-        else:
-            lines.append(f"{title} · {alert.percent}% — некому отправить")
-        lines.extend(f"    ⚠️ {html.escape(f)}" for f in failed)
-
-    lines += ["", "Выберите действие:"]
-    return "\n".join(lines)
+    log.info("Списки отправлены %s (%s): %s", person.name, person.telegram_id,
+             ", ".join(c.value for c in categories))
+    titles = ", ".join(html.escape(c.label()) for c in categories)
+    return f"📤 Отправлено {name}: {titles}.\n\nВыберите действие:"
 
 
 async def _notify_all(

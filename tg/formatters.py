@@ -13,7 +13,8 @@ def format_fill_alert(alert: FillAlert) -> str:
         return f"🔴 <b>{title}</b>: список заполнен ({stats}) — пора делать заказ!"
     if alert.level >= 80:
         return f"🟠 <b>{title}</b>: заполнено на {alert.percent}% ({stats}) — скоро пора заказывать."
-    return f"🟡 <b>{title}</b>: заполнено на {alert.percent}% ({stats})."
+    emoji = "🟡" if alert.level else "🟢"
+    return f"{emoji} <b>{title}</b>: заполнено на {alert.percent}% ({stats})."
 
 
 def plural_positions(n: int) -> str:

@@ -1,5 +1,14 @@
-from pydantic import PositiveInt
+from typing import Literal
+
+from pydantic import BaseModel, PositiveInt
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Responsible(BaseModel):
+    """Ответственный за категории: получает их оповещения и списки."""
+    name:        str   # в дательном падеже — для кнопки «Отправить Юре»
+    telegram_id: int
+    categories:  list[Literal["tobacco", "bar", "other"]]
 
 
 class Settings(BaseSettings):
@@ -23,11 +32,16 @@ class Settings(BaseSettings):
     # На каких процентах рассылать оповещение (каждый порог — один раз до очистки)
     FILL_THRESHOLDS: list[PositiveInt] = [50, 80, 100]
 
-    # Кому слать оповещения о заполненности табака. Пусто — всем зарегистрированным.
-    # Остальные списки всегда уходят всем зарегистрированным.
-    TOBACCO_ALERT_IDS: list[int] = [1217267542, 496484865]
+    # Кто за что отвечает. Им уходят оповещения о заполненности их категорий,
+    # а у администратора для каждого есть кнопка «📤 Отправить …» — шлёт
+    # список и заполненность. Категорию без ответственного оповещения
+    # получают все зарегистрированные.
+    RESPONSIBLE: list[Responsible] = [
+        Responsible(name="Юре",  telegram_id=1217267542, categories=["tobacco"]),
+        Responsible(name="Жене", telegram_id=496484865,  categories=["bar", "other"]),
+    ]
 
-    # Кто видит кнопку ручной рассылки оповещений
+    # Кто видит кнопки «📤 Отправить …»
     ADMIN_IDS: list[int] = [8251607484]
 
     TOBACCO_BRANDS: list[str] = [
