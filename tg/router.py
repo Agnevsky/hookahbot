@@ -31,7 +31,7 @@ from tg.keyboards import CB_CANCEL
 _TEXT = filters.TEXT & ~filters.COMMAND
 
 # Паттерны для каждого состояния
-_MAIN_CB    = "^(add:|menu:)"
+_MAIN_CB    = "^(add:|menu:|admin:)"
 _LIST_CB    = "^(list:|back:main)"
 _CLEAR_CB   = "^(clear:|back:main)"
 _BRAND_CB   = "^(brand:|back:main)"

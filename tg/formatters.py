@@ -9,9 +9,9 @@ def format_fill_alert(alert: FillAlert) -> str:
     """Оповещение о заполненности (HTML)."""
     title = html.escape(alert.pool.title)
     stats = f"{alert.count} из {alert.pool.capacity}"
-    if alert.threshold >= 100:
+    if alert.level >= 100:
         return f"🔴 <b>{title}</b>: список заполнен ({stats}) — пора делать заказ!"
-    if alert.threshold >= 80:
+    if alert.level >= 80:
         return f"🟠 <b>{title}</b>: заполнено на {alert.percent}% ({stats}) — скоро пора заказывать."
     return f"🟡 <b>{title}</b>: заполнено на {alert.percent}% ({stats})."
 

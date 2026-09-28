@@ -18,6 +18,8 @@ log = logging.getLogger(__name__)
 async def on_startup(app: Application) -> None:
     await init_db()
     log.info("БД инициализирована")
+    log.info("Оповещения по табаку: %s", settings.TOBACCO_ALERT_IDS or "всем зарегистрированным")
+    log.info("Администраторы: %s", settings.ADMIN_IDS or "нет")
 
 
 async def on_shutdown(app: Application) -> None:

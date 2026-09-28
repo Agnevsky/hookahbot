@@ -36,6 +36,8 @@ CB_DRINKS_SOFT   = "drinks:soft"
 CB_MENU_LIST     = "menu:list"
 CB_MENU_CLEAR    = "menu:clear"
 
+CB_ADMIN_NOTIFY  = "admin:notify"
+
 CB_BACK_MAIN     = "back:main"
 CB_BACK_BAR      = "back:bar"
 CB_CANCEL        = "cancel"
@@ -49,14 +51,20 @@ def _badge(n: int) -> str:
     return f" · {n}" if n else ""
 
 
-def main_menu(counts: dict[Category, int]) -> InlineKeyboardMarkup:
-    """Верхний ряд — добавление, ниже два действия с выбором категории на втором шаге."""
+def main_menu(counts: dict[Category, int], is_admin: bool = False) -> InlineKeyboardMarkup:
+    """
+    Верхний ряд — добавление, ниже два действия с выбором категории на втором шаге.
+    Администратору — ещё кнопка ручной рассылки оповещений.
+    """
     total = sum(counts.values())
-    return _kb([
+    rows = [
         [("🌿 Табак", CB_ADD_TOBACCO), ("🍹 Бар", CB_ADD_BAR), ("📦 Прочее", CB_ADD_OTHER)],
         [(f"📋 Список заказа{_badge(total)}", CB_MENU_LIST)],
         [("🗑 Очистить список", CB_MENU_CLEAR)],
-    ])
+    ]
+    if is_admin:
+        rows.append([("📣 Разослать оповещения", CB_ADMIN_NOTIFY)])
+    return _kb(rows)
 
 
 def _pick_menu(counts: dict[Category, int], cb: dict[Category, str]) -> InlineKeyboardMarkup:
