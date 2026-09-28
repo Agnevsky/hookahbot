@@ -11,7 +11,9 @@ def format_fill_alert(alert: FillAlert) -> str:
     stats = f"{alert.count} из {alert.pool.capacity}"
     if alert.threshold >= 100:
         return f"🔴 <b>{title}</b>: список заполнен ({stats}) — пора делать заказ!"
-    return f"🟡 <b>{title}</b>: заполнено на {alert.percent}% ({stats}) — скоро пора заказывать."
+    if alert.threshold >= 80:
+        return f"🟠 <b>{title}</b>: заполнено на {alert.percent}% ({stats}) — скоро пора заказывать."
+    return f"🟡 <b>{title}</b>: заполнено на {alert.percent}% ({stats})."
 
 
 def plural_positions(n: int) -> str:

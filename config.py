@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     CAPACITY_OTHER:      PositiveInt = 15
 
     # На каких процентах рассылать оповещение (каждый порог — один раз до очистки)
-    FILL_THRESHOLDS: list[PositiveInt] = [80, 100]
+    FILL_THRESHOLDS: list[PositiveInt] = [50, 80, 100]
 
     TOBACCO_BRANDS: list[str] = [
         "Dark Side",
@@ -38,6 +38,10 @@ class Settings(BaseSettings):
         "ДГМ",
         "База",
         "Starline",
+        "Take",
+        "Хулиган",
+        "Sebero",
+        "Sapphire",
     ]
 
 
