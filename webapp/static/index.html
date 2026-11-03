@@ -3,17 +3,30 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
-  <meta name="color-scheme" content="light dark">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0a0812">
   <title>Заказ кальянной</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="/static/style.css?v=1">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Unbounded:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css?v=2">
 </head>
 <body>
+  <!-- Дымчатый фон -->
+  <div class="bg" aria-hidden="true">
+    <i class="blob blob--1"></i><i class="blob blob--2"></i><i class="blob blob--3"></i><i class="blob blob--4"></i>
+    <i class="grain"></i>
+  </div>
+
   <div id="app">
     <header class="topbar">
-      <div>
-        <div class="topbar__title">Заказ</div>
-        <div class="topbar__sub" id="hello">Загрузка…</div>
+      <div class="brand">
+        <div class="brand__mark">💨</div>
+        <div>
+          <div class="topbar__title">Заказ</div>
+          <div class="topbar__sub" id="hello">Загрузка…</div>
+        </div>
       </div>
       <button class="icon-btn" id="refresh" aria-label="Обновить" title="Обновить">
         <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M17.65 6.35A7.96 7.96 0 0 0 12 4a8 8 0 1 0 7.73 10h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
@@ -81,14 +94,18 @@
 
   <!-- Нижние вкладки -->
   <nav class="tabbar" id="tabbar">
+    <span class="tabbar__glider" id="tab-glider"></span>
     <button class="tab is-active" data-tab="list">
-      <span class="tab__icon">📋</span><span class="tab__label">Список</span><span class="tab__badge" id="badge-total" hidden></span>
+      <svg class="tab__icon" viewBox="0 0 24 24" width="22" height="22"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1.5" fill="currentColor"/><circle cx="4.5" cy="12" r="1.5" fill="currentColor"/><circle cx="4.5" cy="18" r="1.5" fill="currentColor"/></svg>
+      <span class="tab__label">Список</span><span class="tab__badge" id="badge-total" hidden></span>
     </button>
     <button class="tab" data-tab="add">
-      <span class="tab__icon">➕</span><span class="tab__label">Добавить</span>
+      <svg class="tab__icon" viewBox="0 0 24 24" width="22" height="22"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M12 8v8M8 12h8"/></svg>
+      <span class="tab__label">Добавить</span>
     </button>
     <button class="tab" data-tab="edit">
-      <span class="tab__icon">✏️</span><span class="tab__label">Правка</span>
+      <svg class="tab__icon" viewBox="0 0 24 24" width="22" height="22"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M4 20h4L19 9l-4-4L4 16v4z"/><path stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M13.5 6.5l4 4"/></svg>
+      <span class="tab__label">Правка</span>
     </button>
   </nav>
 
@@ -115,6 +132,6 @@
     <div class="hint" id="blocker-text">Приложение работает только внутри бота — нажмите «Заказ» рядом с полем ввода.</div>
   </div>
 
-  <script src="/static/app.js?v=1"></script>
+  <script src="/static/app.js?v=2"></script>
 </body>
 </html>

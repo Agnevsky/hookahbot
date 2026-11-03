@@ -18,6 +18,7 @@ from db.fill import Announced, FillAlert, new_alerts, reset_announced, status
 from db.models import Breakdown, Category
 from db.queries import get_all_user_ids, get_breakdown, get_items_by_category
 from tg.formatters import format_category_list, format_fill_alert
+from tg.keyboards import open_app_kb
 
 log = logging.getLogger(__name__)
 
@@ -67,7 +68,9 @@ async def deliver(bot: Bot, text: str, recipients: list[int]) -> tuple[int, list
     sent, failed = 0, []
     for uid in recipients:
         try:
-            await bot.send_message(chat_id=uid, text=text, parse_mode="HTML")
+            await bot.send_message(
+                chat_id=uid, text=text, parse_mode="HTML", reply_markup=open_app_kb("📱 Открыть заказ"),
+            )
             sent += 1
         except TelegramError as e:
             log.warning("Не удалось отправить оповещение %s: %s", uid, e)
@@ -150,9 +153,13 @@ async def send_to_responsible(bot: Bot, bot_data: dict[str, Any], person: Respon
         )
 
     try:
-        for text in messages:
-            for chunk in chunks(text):
-                await bot.send_message(person.telegram_id, chunk, parse_mode="HTML")
+        parts = [chunk for text in messages for chunk in chunks(text)]
+        for i, chunk in enumerate(parts):
+            last = i == len(parts) - 1
+            await bot.send_message(
+                person.telegram_id, chunk, parse_mode="HTML",
+                reply_markup=open_app_kb("📱 Открыть заказ") if last else None,
+            )
     except TelegramError as e:
         log.warning("Не удалось отправить %s (%s): %s", person.name, person.telegram_id, e)
         return SendResult(ok=False, categories=categories, error=why(e))

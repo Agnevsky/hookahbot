@@ -10,8 +10,11 @@ if (tg) {
   tg.ready();
   tg.expand();
   if (supports("7.7")) tg.disableVerticalSwipes();   // не закрывать приложение при прокрутке
-  document.documentElement.dataset.theme = tg.colorScheme || "light";
-  tg.onEvent("themeChanged", () => { document.documentElement.dataset.theme = tg.colorScheme; });
+  // У приложения своя тёмная тема — красим под неё шапку и фон Telegram
+  try {
+    if (supports("6.1")) { tg.setHeaderColor("#0a0812"); tg.setBackgroundColor("#0a0812"); }
+    if (supports("7.10")) tg.setBottomBarColor("#0a0812");
+  } catch { /* старый клиент */ }
 }
 
 const haptic = {
@@ -614,7 +617,9 @@ function switchTab(tab) {
   S.tab = tab;
   if (tab !== "edit") { S.selecting = false; S.selected.clear(); }
   document.querySelectorAll(".view").forEach((v) => { v.hidden = v.dataset.view !== tab; });
-  document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("is-active", t.dataset.tab === tab));
+  const tabs = [...document.querySelectorAll(".tab")];
+  tabs.forEach((t) => t.classList.toggle("is-active", t.dataset.tab === tab));
+  $("tab-glider").style.setProperty("--i", tabs.findIndex((t) => t.dataset.tab === tab));
   // Список и правка показывают одну и ту же категорию — так удобнее переходить
   if (tab === "edit") S.editCat = S.listCat;
   if (tab === "list") S.listCat = S.editCat;
