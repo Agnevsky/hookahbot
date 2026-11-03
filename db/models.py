@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import BigInteger, Boolean, DateTime, Text, func
+from sqlalchemy import BigInteger, Boolean, DateTime, Integer, Text, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -73,6 +73,15 @@ class OrderItem(Base):
     is_done:     Mapped[bool]     = mapped_column(Boolean, default=False, nullable=False)
 
 
+# ── Марки табака (редактируются в веб-приложении) ────────────────
+class TobaccoBrand(Base):
+    __tablename__ = "tobacco_brands"
+
+    id:       Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    name:     Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
 # ── Pydantic схемы ────────────────────────────────────────────────
 class OrderItemCreate(BaseModel):
     category:    Category
@@ -91,3 +100,10 @@ class OrderItemRead(BaseModel):
     added_by:    int
     added_at:    datetime
     is_done:     bool
+
+
+class BrandRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id:   int
+    name: str

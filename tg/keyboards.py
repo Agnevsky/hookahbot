@@ -1,13 +1,16 @@
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
 from config import settings
-from db.models import Category
+from db.models import BrandRead, Category
 
 
-def _kb(buttons: list[list[tuple[str, str]]]) -> InlineKeyboardMarkup:
+def _kb(
+    buttons: list[list[tuple[str, str]]],
+    extra: list[list[InlineKeyboardButton]] | None = None,
+) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton(text, callback_data=cb) for text, cb in row]
-        for row in buttons
+        *([InlineKeyboardButton(text, callback_data=cb) for text, cb in row] for row in buttons),
+        *(extra or []),
     ])
 
 
@@ -63,11 +66,17 @@ def main_menu(counts: dict[Category, int], is_admin: bool = False) -> InlineKeyb
         [("🗑 Очистить список", CB_MENU_CLEAR)],
     ]
     if is_admin:
-        rows.append([
-            (f"📤 Отправить {r.name}", f"{CB_SEND_PREFIX}{r.telegram_id}")
-            for r in settings.RESPONSIBLE
-        ])
-    return _kb(rows)
+        rows += [
+            [(f"📤 Отправить {r.name}", f"{CB_SEND_PREFIX}{r.telegram_id}")
+             for r in settings.RESPONSIBLE[i:i + 2]]
+            for i in range(0, len(settings.RESPONSIBLE), 2)
+        ]
+    extra = []
+    if settings.WEBAPP_URL:
+        extra.append([InlineKeyboardButton(
+            "📱 Открыть приложение", web_app=WebAppInfo(url=settings.WEBAPP_URL),
+        )])
+    return _kb(rows, extra)
 
 
 def _pick_menu(counts: dict[Category, int], cb: dict[Category, str]) -> InlineKeyboardMarkup:
@@ -111,10 +120,10 @@ DRINKS_MENU = _kb([
 CANCEL_KB = _kb([[("❌ Отмена", CB_CANCEL)]])
 
 
-def tobacco_brands_kb() -> InlineKeyboardMarkup:
-    brands = settings.TOBACCO_BRANDS
+def tobacco_brands_kb(brands: list[BrandRead]) -> InlineKeyboardMarkup:
+    # В callback_data — id, а не название: у Telegram лимит 64 байта
     rows = [
-        [(brand, f"brand:{brand}") for brand in brands[i:i + 2]]
+        [(brand.name, f"brand:{brand.id}") for brand in brands[i:i + 2]]
         for i in range(0, len(brands), 2)
     ]
     rows.append([("◀️ Назад", CB_BACK_MAIN)])

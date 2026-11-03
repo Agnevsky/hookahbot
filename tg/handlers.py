@@ -2,22 +2,22 @@ import html
 import logging
 
 from telegram import InlineKeyboardMarkup, Update
-from telegram.error import BadRequest, TelegramError
+from telegram.error import BadRequest
 from telegram.ext import ContextTypes
 
-from config import Responsible, settings
-from db.fill import Announced, FillAlert, new_alerts, reset_announced, status
+from config import settings
 from db.models import BarSub, Category, OrderItemCreate
 from db.queries import (
-    add_item,
+    add_items,
+    clear_category,
     counts_by_category,
-    get_breakdown,
+    get_brand,
     get_counts,
     get_items_by_category,
-    clear_category,
-    get_all_user_ids,
+    list_brands,
     register_user,
 )
+from notify import after_clear, after_items_changed, responsible_by_id, send_to_responsible
 from tg.formatters import format_category_list, format_fill_alert
 from tg.keyboards import (
     main_menu, list_menu, clear_menu, BAR_MENU, DRINKS_MENU, CANCEL_KB,
@@ -48,8 +48,6 @@ CTX_CAT    = "category"
 CTX_SUBCAT = "subcategory"
 CTX_PROMPT = "prompt_msg_id"   # сообщение «напишите ответным…», убираем после ввода
 
-BD_ANNOUNCED = "fill_announced"  # bot_data: какие уровни заполненности уже объявлены
-
 
 # ================================================================
 #  УТИЛИТЫ
@@ -57,10 +55,6 @@ BD_ANNOUNCED = "fill_announced"  # bot_data: какие уровни запол�
 
 def _is_admin(update: Update) -> bool:
     return update.effective_user.id in settings.ADMIN_IDS
-
-
-def _announced(ctx: ContextTypes.DEFAULT_TYPE) -> Announced:
-    return ctx.bot_data.setdefault(BD_ANNOUNCED, {})
 
 
 async def _main_kb(update: Update) -> InlineKeyboardMarkup:
@@ -73,6 +67,10 @@ async def _list_kb() -> InlineKeyboardMarkup:
 
 async def _clear_kb() -> InlineKeyboardMarkup:
     return clear_menu(await get_counts())
+
+
+async def _brands_kb() -> InlineKeyboardMarkup:
+    return tobacco_brands_kb(await list_brands())
 
 
 async def _answer(update: Update, text: str, **kwargs) -> None:
@@ -173,7 +171,7 @@ async def cb_main_menu(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
 
     # ── Добавить ─────────────────────────────────────────────────
     if data == CB_ADD_TOBACCO:
-        await _answer(update, "Выберите марку табака:", reply_markup=tobacco_brands_kb())
+        await _answer(update, "Выберите марку табака:", reply_markup=await _brands_kb())
         return STATE_TOBACCO_BRAND
 
     if data == CB_ADD_BAR:
@@ -196,14 +194,20 @@ async def cb_main_menu(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
 
     # ── «Отправить …» (только администратор) ──────────────────────
     if data.startswith(CB_SEND_PREFIX):
-        person = _responsible_by_id(data.removeprefix(CB_SEND_PREFIX))
+        person = responsible_by_id(data.removeprefix(CB_SEND_PREFIX))
         # Кнопки видит только админ, но callback_data можно подделать —
         # проверяем ещё раз здесь
         if not _is_admin(update) or person is None:
             await update.callback_query.answer("Недоступно", show_alert=True)
             return STATE_MAIN
-        report = await _send_to_responsible(ctx, person)
-        await _finish(update, report, parse_mode="HTML")
+        result = await send_to_responsible(ctx.bot, ctx.bot_data, person)
+        name = html.escape(person.name)
+        if result.ok:
+            titles = ", ".join(html.escape(c.label()) for c in result.categories)
+            report = f"📤 Отправлено {name}: {titles}."
+        else:
+            report = f"⚠️ Не доставлено {name}: {html.escape(result.error or '')}."
+        await _finish(update, f"{report}\n\nВыберите действие:", parse_mode="HTML")
         return STATE_MAIN
 
     return STATE_MAIN
@@ -251,13 +255,8 @@ async def cb_clear_pick(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     if data in _CLEAR_MAP:
         cat = _CLEAR_MAP[data]
         await clear_category(cat)
-        reset_announced(_announced(ctx), cat)
         await _finish(update, f"✅ Список «{cat.label()}» очищен.\n\nВыберите действие:")
-        await _notify_all(
-            ctx,
-            sender_id=update.effective_user.id,
-            message=f"🔔 Заказ <b>{html.escape(cat.label())}</b> сделан — список очищен.",
-        )
+        await after_clear(ctx.bot, ctx.bot_data, cat, sender_id=update.effective_user.id)
         return STATE_MAIN
 
     await _answer(update, "Какой список очистить?", reply_markup=await _clear_kb())
@@ -276,8 +275,10 @@ async def cb_tobacco_brand(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> in
         return STATE_MAIN
 
     if data.startswith("brand:"):
-        brand = data.removeprefix("brand:")
-        if brand in settings.TOBACCO_BRANDS:
+        raw = data.removeprefix("brand:")
+        brand_row = await get_brand(int(raw)) if raw.isdigit() else None
+        if brand_row is not None:
+            brand = brand_row.name
             ctx.user_data[CTX_CAT]    = Category.TOBACCO
             ctx.user_data[CTX_SUBCAT] = brand
             return await _prompt(
@@ -286,7 +287,7 @@ async def cb_tobacco_brand(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> in
                 parse_mode="HTML",
             )
 
-    await _answer(update, "Выберите марку из списка:", reply_markup=tobacco_brands_kb())
+    await _answer(update, "Выберите марку из списка:", reply_markup=await _brands_kb())
     return STATE_TOBACCO_BRAND
 
 
@@ -358,14 +359,13 @@ async def text_input_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> 
     subcat = ctx.user_data.get(CTX_SUBCAT)
 
     sender = update.effective_user.id
-    await add_item(OrderItemCreate(
+    await add_items(OrderItemCreate(
         category=category,
         subcategory=subcat,
         content=text,
         added_by=sender,
     ))
-    breakdown = await get_breakdown()
-    alerts = new_alerts(breakdown, _announced(ctx))
+    breakdown, alerts = await after_items_changed(ctx.bot, ctx.bot_data, sender_id=sender)
 
     # Добавившему — предупреждение прямо в подтверждении, остальным — рассылкой
     label = f" [{html.escape(subcat)}]" if subcat else ""
@@ -374,8 +374,6 @@ async def text_input_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> 
         parse_mode="HTML",
         reply_markup=main_menu(counts_by_category(breakdown), is_admin=_is_admin(update)),
     )
-    for alert in alerts:
-        await _send_fill_alert(ctx, alert, sender_id=sender)
     return STATE_MAIN
 
 
@@ -394,129 +392,3 @@ async def cb_stale(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     await q.message.reply_text(
         "Эта кнопка устарела. Нажмите /start, чтобы открыть меню заново.",
     )
-
-
-# ================================================================
-#  РАССЫЛКИ
-# ================================================================
-
-def _why(e: TelegramError) -> str:
-    """Причина недоставки — по-человечески."""
-    msg = e.message.lower()
-    if "blocked" in msg:
-        return "заблокировал бота"
-    if "initiate" in msg or "chat not found" in msg:
-        return "ещё не нажимал /start в боте"
-    return e.message
-
-
-async def _deliver(
-    ctx: ContextTypes.DEFAULT_TYPE,
-    text: str,
-    recipients: list[int],
-) -> tuple[int, list[str]]:
-    """Разослать сообщение. Возвращает (доставлено, [«id — причина» для недоставленных])."""
-    sent, failed = 0, []
-    for uid in recipients:
-        try:
-            await ctx.bot.send_message(chat_id=uid, text=text, parse_mode="HTML")
-            sent += 1
-        except TelegramError as e:
-            log.warning("Не удалось отправить оповещение %s: %s", uid, e)
-            failed.append(f"{uid} — {_why(e)}")
-    return sent, failed
-
-
-async def _send_fill_alert(
-    ctx: ContextTypes.DEFAULT_TYPE,
-    alert: FillAlert,
-    sender_id: int,
-) -> tuple[int, int, list[str]]:
-    """
-    Разослать оповещение о заполненности ответственным за категорию пула
-    (если их нет — всем зарегистрированным).
-    Возвращает (доставлено, всего адресатов, [недоставленные]).
-    """
-    recipients = _responsible_ids(alert.pool.category) or await get_all_user_ids()
-    targets = [uid for uid in recipients if uid != sender_id]
-    sent, failed = await _deliver(ctx, format_fill_alert(alert), targets)
-    log.info(
-        "Оповещение «%s» %d%%: доставлено %d из %d",
-        alert.pool.key, alert.level, sent, len(targets),
-    )
-    return sent, len(targets), failed
-
-
-def _responsible_ids(category: Category) -> list[int]:
-    return [r.telegram_id for r in settings.RESPONSIBLE if category in r.categories]
-
-
-def _responsible_by_id(raw: str) -> Responsible | None:
-    return next((r for r in settings.RESPONSIBLE if str(r.telegram_id) == raw), None)
-
-
-_TG_LIMIT = 4000   # у Telegram 4096, оставляем запас на эмодзи
-
-
-def _chunks(text: str) -> list[str]:
-    """Разбить длинное сообщение по строкам — теги в каждой строке закрыты."""
-    chunks, current = [], ""
-    for line in text.split("\n"):
-        candidate = f"{current}\n{line}" if current else line
-        if len(candidate) > _TG_LIMIT and current:
-            chunks.append(current)
-            current = line
-        else:
-            current = candidate
-    chunks.append(current)
-    return chunks
-
-
-async def _send_to_responsible(ctx: ContextTypes.DEFAULT_TYPE, person: Responsible) -> str:
-    """
-    Отправить ответственному его списки с заполненностью — всегда,
-    независимо от порогов. Возвращает отчёт для администратора.
-    """
-    breakdown  = await get_breakdown()
-    categories = [c for c in Category if c in person.categories]
-
-    sent_alerts: list[FillAlert] = []
-    messages: list[str] = []
-    for category in categories:
-        pools = status(category, breakdown)
-        sent_alerts += pools
-        rows = await get_items_by_category(category)
-        messages.append(
-            "\n".join(map(format_fill_alert, pools))
-            + "\n\n"
-            + format_category_list(category, rows)
-        )
-
-    name = html.escape(person.name)
-    try:
-        for text in messages:
-            for chunk in _chunks(text):
-                await ctx.bot.send_message(person.telegram_id, chunk, parse_mode="HTML")
-    except TelegramError as e:
-        log.warning("Не удалось отправить %s (%s): %s", person.name, person.telegram_id, e)
-        return f"⚠️ Не доставлено {name}: {html.escape(_why(e))}.\n\nВыберите действие:"
-
-    # Отправленный вручную уровень автоматика повторять не будет
-    announced = _announced(ctx)
-    for alert in sent_alerts:
-        announced[alert.pool.key] = max(announced.get(alert.pool.key, 0), alert.level)
-
-    log.info("Списки отправлены %s (%s): %s", person.name, person.telegram_id,
-             ", ".join(c.value for c in categories))
-    titles = ", ".join(html.escape(c.label()) for c in categories)
-    return f"📤 Отправлено {name}: {titles}.\n\nВыберите действие:"
-
-
-async def _notify_all(
-    ctx: ContextTypes.DEFAULT_TYPE,
-    sender_id: int,
-    message: str,
-) -> None:
-    """Всем зарегистрированным, кроме отправителя."""
-    targets = [uid for uid in await get_all_user_ids() if uid != sender_id]
-    await _deliver(ctx, message, targets)

@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <title>Заказ кальянной</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="/static/style.css?v=1">
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div>
+        <div class="topbar__title">Заказ</div>
+        <div class="topbar__sub" id="hello">Загрузка…</div>
+      </div>
+      <button class="icon-btn" id="refresh" aria-label="Обновить" title="Обновить">
+        <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M17.65 6.35A7.96 7.96 0 0 0 12 4a8 8 0 1 0 7.73 10h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+      </button>
+    </header>
+
+    <!-- ═══ Список ═══ -->
+    <section class="view" id="view-list" data-view="list">
+      <div class="segmented" id="list-cats"></div>
+      <div id="list-pools"></div>
+      <div class="toolbar">
+        <label class="search">
+          <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+          <input type="search" id="list-search" placeholder="Поиск по списку" autocomplete="off">
+        </label>
+        <button class="chip-btn" id="list-copy" title="Скопировать список">📋 Копировать</button>
+      </div>
+      <div id="list-body"></div>
+      <div id="list-admin"></div>
+    </section>
+
+    <!-- ═══ Добавить ═══ -->
+    <section class="view" id="view-add" data-view="add" hidden>
+      <h2 class="step">1. Что добавляем?</h2>
+      <div class="cat-tiles" id="add-cats"></div>
+
+      <div id="add-sub-wrap" hidden>
+        <h2 class="step" id="add-sub-title">2. Марка</h2>
+        <label class="search search--small" id="brand-search-wrap" hidden>
+          <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+          <input type="search" id="brand-search" placeholder="Найти марку" autocomplete="off">
+        </label>
+        <div class="chips" id="add-subs"></div>
+      </div>
+
+      <div id="add-input-wrap" hidden>
+        <h2 class="step" id="add-input-title">3. Позиции</h2>
+        <div class="card card--input">
+          <textarea id="add-text" rows="4" placeholder="Например:&#10;Двойное яблоко&#10;Виноград минт"></textarea>
+          <div class="hint" id="add-hint">Каждая строка — отдельная позиция</div>
+        </div>
+        <button class="btn btn--primary btn--block" id="add-submit" disabled>Добавить</button>
+        <div id="add-recent"></div>
+      </div>
+    </section>
+
+    <!-- ═══ Правка ═══ -->
+    <section class="view" id="view-edit" data-view="edit" hidden>
+      <div class="segmented" id="edit-cats"></div>
+      <div class="toolbar toolbar--between">
+        <span class="hint" id="edit-hint">Нажмите на позицию, чтобы изменить</span>
+        <button class="chip-btn" id="edit-select-toggle">Выбрать</button>
+      </div>
+      <div id="edit-body"></div>
+      <div id="edit-danger"></div>
+      <div id="edit-brands"></div>
+    </section>
+  </div>
+
+  <!-- Панель массового удаления -->
+  <div class="action-bar" id="action-bar" hidden>
+    <button class="btn btn--ghost" id="select-all">Выбрать все</button>
+    <button class="btn btn--danger" id="delete-selected">Удалить</button>
+  </div>
+
+  <!-- Нижние вкладки -->
+  <nav class="tabbar" id="tabbar">
+    <button class="tab is-active" data-tab="list">
+      <span class="tab__icon">📋</span><span class="tab__label">Список</span><span class="tab__badge" id="badge-total" hidden></span>
+    </button>
+    <button class="tab" data-tab="add">
+      <span class="tab__icon">➕</span><span class="tab__label">Добавить</span>
+    </button>
+    <button class="tab" data-tab="edit">
+      <span class="tab__icon">✏️</span><span class="tab__label">Правка</span>
+    </button>
+  </nav>
+
+  <!-- Редактирование позиции -->
+  <div class="sheet-backdrop" id="sheet-backdrop" hidden></div>
+  <div class="sheet" id="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+    <div class="sheet__grip"></div>
+    <h3 class="sheet__title" id="sheet-title">Изменить позицию</h3>
+    <input class="input" id="sheet-text" maxlength="300" autocomplete="off">
+    <div class="sheet__label" id="sheet-sub-label">Раздел</div>
+    <div class="chips chips--compact" id="sheet-subs"></div>
+    <div class="sheet__meta hint" id="sheet-meta"></div>
+    <div class="sheet__actions">
+      <button class="btn btn--danger-ghost" id="sheet-delete">Удалить</button>
+      <button class="btn btn--primary" id="sheet-save">Сохранить</button>
+    </div>
+  </div>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+
+  <div class="blocker" id="blocker" hidden>
+    <div class="blocker__emoji">🔒</div>
+    <div class="blocker__title">Откройте через Telegram</div>
+    <div class="hint" id="blocker-text">Приложение работает только внутри бота — нажмите «Заказ» рядом с полем ввода.</div>
+  </div>
+
+  <script src="/static/app.js?v=1"></script>
+</body>
+</html>

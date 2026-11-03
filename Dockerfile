@@ -16,4 +16,7 @@ RUN useradd --create-home --uid 1000 appuser \
     && chown -R appuser:appuser /app
 USER appuser
 
+# Веб-приложение (Telegram Mini App)
+EXPOSE 8080
+
 CMD ["python", "bot.py"]

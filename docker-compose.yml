@@ -6,6 +6,12 @@ services:
     env_file: .env
     volumes:
       - bot_data:/app/data
+    # Веб-приложение — только на localhost: наружу его выставляет
+    # HTTPS-прокси (Caddy ниже или ваш nginx)
+    ports:
+      - "127.0.0.1:${WEBAPP_PORT:-8080}:8080"
+    environment:
+      WEBAPP_PORT: 8080
     depends_on:
       postgres:
         condition: service_healthy
@@ -26,6 +32,26 @@ services:
       timeout: 5s
       retries: 5
 
+  # HTTPS для веб-приложения: Telegram открывает Mini App только по https.
+  # Caddy сам получает сертификат Let's Encrypt для WEBAPP_DOMAIN.
+  # Запуск: docker compose --profile https up -d
+  caddy:
+    image: caddy:2-alpine
+    container_name: hookah_caddy
+    restart: unless-stopped
+    profiles: ["https"]
+    environment:
+      WEBAPP_DOMAIN: ${WEBAPP_DOMAIN:-}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on:
+      - bot
+
 volumes:
   postgres_data:
   bot_data:
+  caddy_data:

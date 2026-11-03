@@ -36,14 +36,23 @@ class Settings(BaseSettings):
     # а у администратора для каждого есть кнопка «📤 Отправить …» — шлёт
     # список и заполненность. Категорию без ответственного оповещения
     # получают все зарегистрированные.
-    RESPONSIBLE: list[Responsible] = [
-        Responsible(name="Юре",  telegram_id=1217267542, categories=["tobacco"]),
-        Responsible(name="Жене", telegram_id=496484865,  categories=["bar", "other"]),
-    ]
+    # Задаётся в .env JSON-списком — Telegram ID не храним в коде.
+    RESPONSIBLE: list[Responsible] = []
 
-    # Кто видит кнопки «📤 Отправить …»
-    ADMIN_IDS: list[int] = [8251607484]
+    # Кто видит кнопки «📤 Отправить …» и управляет марками табака (.env)
+    ADMIN_IDS: list[int] = []
 
+    # ─── Веб-приложение (Telegram Mini App) ─────────────────────
+    # Публичный HTTPS-адрес приложения, например https://hookah.example.com/
+    # Пусто — кнопка «Открыть приложение» в боте не показывается.
+    WEBAPP_URL: str = ""
+    WEBAPP_HOST: str = "0.0.0.0"
+    WEBAPP_PORT: PositiveInt = 8080
+    # Сколько секунд действительна подпись initData от Telegram
+    WEBAPP_AUTH_TTL: PositiveInt = 24 * 60 * 60
+
+    # Марки табака по умолчанию — ими заполняется пустая таблица марок
+    # при первом запуске. Дальше марки редактируются в веб-приложении.
     TOBACCO_BRANDS: list[str] = [
         "Dark Side",
         "Must Have",
